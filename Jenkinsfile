@@ -69,7 +69,7 @@ pipeline {
             }
 
             steps {
-                powershell 
+                powershell '''
                     $ErrorActionPreference = "Stop"
 
                     $service = Get-Service -Name "Spooler" -ErrorAction Stop
@@ -80,6 +80,7 @@ pipeline {
                 
             }
         }
+'''
 
         // 2. Останавливаем службу
         stage('Stop Service') {
@@ -88,7 +89,7 @@ pipeline {
             }
 
             steps {
-                powershell 
+                powershell ''' 
                     $ErrorActionPreference = "Stop"
 
                     Set-Service -Name "Spooler" -StartupType Automatic
@@ -114,6 +115,7 @@ pipeline {
                 
             }
         }
+''' 
 
         // 3. Очищаем кэш службы печати
         stage('Clean Cache') {
@@ -122,7 +124,7 @@ pipeline {
             }
 
             steps {
-                powershell 
+                powershell '''
                     $ErrorActionPreference = "Stop"
 
                     $service = Get-Service -Name "Spooler"
@@ -148,12 +150,13 @@ pipeline {
                 
             }
         }
+'''
 
         // 4. Перезагружаем виртуальную машину
         stage('Restart VM') {
     agent { label 'Second' }
     steps {
-        powershell
+        powershell '''
             Write-Host "Restarting Windows VM..."
 
             Start-Process `
@@ -166,6 +169,7 @@ pipeline {
         
     }
 }
+''' 
 
         // 5. Ждём возвращения агента и проверяем службу
        stage('Verify Service') {
@@ -174,7 +178,7 @@ pipeline {
         timeout(time: 5, unit: 'MINUTES')
     }
     steps {
-        powershell 
+        powershell '''
             $ErrorActionPreference = "Stop"
 
 Write-Host "Waiting for Spooler to start..."
@@ -199,6 +203,7 @@ if ($service.Status -ne "Running") {
     }
 }
     }
+    '''
 
     post {
         success {
