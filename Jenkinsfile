@@ -5,6 +5,26 @@ pipeline {
         skipDefaultCheckout()
     }
     stages {
+        stage('Check Admin Rights') {
+    agent { label 'Second' }
+    steps {
+        powershell '''
+            Write-Host "Current user:"
+            whoami
+
+            Write-Host "Administrator status:"
+            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+            $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+
+            Write-Host $principal.IsInRole(
+                [Security.Principal.WindowsBuiltInRole]::Administrator
+            )
+
+            Write-Host "User groups:"
+            whoami /groups
+        '''
+    }
+}
         stage('Hello') {
             agent { label 'Second' }
             steps {
