@@ -29,5 +29,19 @@ pipeline {
         bat 'git branch'
     }
         } 
+         stage('Check VM') {
+            steps {
+                echo 'Checking target VM...'
+                bat 'hostname'
+                bat 'whoami'
+            }
+        }
+
+        stage('Restart VM') {
+            steps {
+                echo 'Scheduling Windows VM restart in 60 seconds...'
+                bat 'shutdown /r /t 60 /c "Restart requested by Jenkins"'
+            }
+        }
     }
 }
