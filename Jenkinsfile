@@ -77,10 +77,10 @@ pipeline {
                     Write-Host "Service found: $($service.DisplayName)"
                     Write-Host "Service Name: $($service.Name)"
                     Write-Host "Current Status: $($service.Status)"
-                
+                '''
             }
         }
-'''
+
 
         // 2. Останавливаем службу
         stage('Stop Service') {
@@ -112,10 +112,10 @@ pipeline {
                     }
 
                     Write-Host "SUCCESS: Spooler is stopped."
-                
+                ''' 
             }
         }
-''' 
+
 
         // 3. Очищаем кэш службы печати
         stage('Clean Cache') {
@@ -147,10 +147,10 @@ pipeline {
 
                     Write-Host "SUCCESS: Spooler cache cleaned."
                     Write-Host "Deleted files: $($files.Count)"
-                
+                '''
             }
         }
-'''
+
 
         // 4. Перезагружаем виртуальную машину
         stage('Restart VM') {
@@ -166,10 +166,10 @@ pipeline {
 
             Write-Host "Restart command sent successfully."
             Start-Sleep -Seconds 2
-        
+        ''' 
     }
 }
-''' 
+
 
         // 5. Ждём возвращения агента и проверяем службу
        stage('Verify Service') {
@@ -202,8 +202,9 @@ if ($service.Status -ne "Running") {
         
     }
 }
+'''
     }
-    '''
+   
 
     post {
         success {
