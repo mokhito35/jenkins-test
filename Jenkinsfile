@@ -138,23 +138,27 @@ pipeline {
         }
 
         stage('Restart VM') {
-            agent { label 'Second' }
-            steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
+    agent { label 'Second' }
 
-                    Write-Host "Restarting Windows VM..."
+    steps {
+        powershell '''
+            $ErrorActionPreference = "Stop"
 
-                    Start-Process `
-                        -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
-                        -ArgumentList "/r /t 5 /f" `
-                        -WindowStyle Hidden
+            $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+            $bootTime | Set-Content "$env:WORKSPACE\\boot-before.txt"
 
-                    Write-Host "Restart command sent successfully."
-                    Start-Sleep -Seconds 2
-                '''
-            }
-        }
+            Write-Host "Previous boot time: $bootTime"
+            Write-Host "Restarting Windows VM..."
+
+            Start-Process `
+                -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
+                -ArgumentList "/r /t 5 /f" `
+                -WindowStyle Hidden
+
+            Write-Host "Restart command sent."
+        '''
+    }
+}
 
         stage('Verify Service') {
             agent { label 'Second' }
