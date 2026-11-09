@@ -170,45 +170,47 @@ pipeline {
             }
         }
 
-        stage('Verify Service') {
-            agent { label 'Second' }
+        
+stage('Verify Service') {
+    agent { label 'Second' }
 
-            options {
-                timeout(time: 5, unit: 'MINUTES')
-            }
-
-            steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
-
-                    Write-Host "Waiting for Spooler to start..."
-
-                    $timeout = (Get-Date).AddMinutes(3)
-                    $service = Get-Service -Name "Spooler"
-
-                    do {
-                        $service = Get-Service -Name "Spooler"
-
-                        Write-Host "Current status: $($service.Status)"
-
-                        if ($service.Status -eq "Running") {
-                            Write-Host "SUCCESS: Spooler is running!"
-                            break
-                        }
-
-                        Start-Sleep -Seconds 5
-
-                    } while ((Get-Date) -lt $timeout)
-
-                    if ($service.Status -ne "Running") {
-                        throw "ERROR: Spooler did not start within 3 minutes!"
-                    }
-
-                    Write-Host "SERVICE CHECK PASSED"
-                '''
-            }
-        }
+    options {
+        timeout(time: 5, unit: 'MINUTES')
     }
+
+    steps {
+        powershell '''
+            $ErrorActionPreference = "Stop"
+
+            Write-Host "Agent is back online."
+            Write-Host "Waiting for Spooler to start..."
+
+            $deadline = (Get-Date).AddMinutes(3)
+            $isRunning = $false
+
+            while ((Get-Date) -lt $deadline) {
+                $service = Get-Service -Name "Spooler"
+
+                Write-Host "Current status: $($service.Status)"
+
+                if ($service.Status -eq "Running") {
+                    $isRunning = $true
+                    break
+                }
+
+                Start-Sleep -Seconds 5
+            }
+
+            if (-not $isRunning) {
+                throw "ERROR: Spooler did not start within 3 minutes!"
+            }
+
+            Write-Host "SUCCESS: Spooler is running!"
+            Write-Host "SERVICE CHECK PASSED"
+        '''
+    }
+}
+
 
     post {
         success {
