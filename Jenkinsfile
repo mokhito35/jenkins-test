@@ -7,25 +7,19 @@ pipeline {
     }
 
     stages {
-
         stage('Check Admin Rights') {
             agent { label 'Second' }
             steps {
                 powershell '''
-                    Write-Host "Current user:"
-                    whoami
-
-                    Write-Host "Administrator status:"
                     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
                     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-
                     $isAdmin = $principal.IsInRole(
                         [Security.Principal.WindowsBuiltInRole]::Administrator
                     )
 
-                    Write-Host $isAdmin
-                    Write-Host "User groups:"
-                    whoami /groups
+                    Write-Host "Current user:"
+                    whoami
+                    Write-Host "Administrator status: $isAdmin"
 
                     if (-not $isAdmin) {
                         throw "Agent does not have Administrator privileges!"
@@ -69,7 +63,6 @@ pipeline {
         stage('Check VM') {
             agent { label 'Second' }
             steps {
-                echo 'Checking target VM...'
                 bat 'hostname'
                 bat 'whoami'
             }
@@ -80,11 +73,8 @@ pipeline {
             steps {
                 powershell '''
                     $ErrorActionPreference = "Stop"
-
                     $service = Get-Service -Name "Spooler" -ErrorAction Stop
-
                     Write-Host "Service found: $($service.DisplayName)"
-                    Write-Host "Service Name: $($service.Name)"
                     Write-Host "Current Status: $($service.Status)"
                 '''
             }
@@ -97,12 +87,10 @@ pipeline {
                     $ErrorActionPreference = "Stop"
 
                     Set-Service -Name "Spooler" -StartupType Automatic
-
                     $service = Get-Service -Name "Spooler"
 
                     if ($service.Status -ne "Stopped") {
                         Stop-Service -Name "Spooler" -Force
-
                         $service.WaitForStatus(
                             [System.ServiceProcess.ServiceControllerStatus]::Stopped,
                             [TimeSpan]::FromSeconds(30)
@@ -127,7 +115,6 @@ pipeline {
                     $ErrorActionPreference = "Stop"
 
                     $service = Get-Service -Name "Spooler"
-
                     if ($service.Status -ne "Stopped") {
                         throw "Spooler must be stopped before cache cleanup!"
                     }
@@ -164,53 +151,50 @@ pipeline {
                         -WindowStyle Hidden
 
                     Write-Host "Restart command sent successfully."
-
                     Start-Sleep -Seconds 2
                 '''
             }
         }
 
-        
-stage('Verify Service') {
-    agent { label 'Second' }
+        stage('Verify Service') {
+            agent { label 'Second' }
 
-    options {
-        timeout(time: 5, unit: 'MINUTES')
-    }
-
-    steps {
-        powershell '''
-            $ErrorActionPreference = "Stop"
-
-            Write-Host "Agent is back online."
-            Write-Host "Waiting for Spooler to start..."
-
-            $deadline = (Get-Date).AddMinutes(3)
-            $isRunning = $false
-
-            while ((Get-Date) -lt $deadline) {
-                $service = Get-Service -Name "Spooler"
-
-                Write-Host "Current status: $($service.Status)"
-
-                if ($service.Status -eq "Running") {
-                    $isRunning = $true
-                    break
-                }
-
-                Start-Sleep -Seconds 5
+            options {
+                timeout(time: 10, unit: 'MINUTES')
             }
 
-            if (-not $isRunning) {
-                throw "ERROR: Spooler did not start within 3 minutes!"
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    Write-Host "Agent is back online."
+                    Write-Host "Waiting for Spooler to start..."
+
+                    $deadline = (Get-Date).AddMinutes(3)
+                    $isRunning = $false
+
+                    while ((Get-Date) -lt $deadline) {
+                        $service = Get-Service -Name "Spooler"
+                        Write-Host "Current status: $($service.Status)"
+
+                        if ($service.Status -eq "Running") {
+                            $isRunning = $true
+                            break
+                        }
+
+                        Start-Sleep -Seconds 5
+                    }
+
+                    if (-not $isRunning) {
+                        throw "ERROR: Spooler did not start within 3 minutes!"
+                    }
+
+                    Write-Host "SUCCESS: Spooler is running!"
+                    Write-Host "SERVICE CHECK PASSED"
+                '''
             }
-
-            Write-Host "SUCCESS: Spooler is running!"
-            Write-Host "SERVICE CHECK PASSED"
-        '''
+        }
     }
-}
-
 
     post {
         success {
