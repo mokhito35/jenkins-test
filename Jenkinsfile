@@ -161,44 +161,64 @@ pipeline {
 }
 
         stage('Verify Service') {
-            agent { label 'Second' }
+    agent { label 'Second' }
 
-            options {
-                timeout(time: 10, unit: 'MINUTES')
-            }
-
-            steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
-
-                    Write-Host "Agent is back online."
-                    Write-Host "Waiting for Spooler to start..."
-
-                    $deadline = (Get-Date).AddMinutes(3)
-                    $isRunning = $false
-
-                    while ((Get-Date) -lt $deadline) {
-                        $service = Get-Service -Name "Spooler"
-                        Write-Host "Current status: $($service.Status)"
-
-                        if ($service.Status -eq "Running") {
-                            $isRunning = $true
-                            break
-                        }
-
-                        Start-Sleep -Seconds 5
-                    }
-
-                    if (-not $isRunning) {
-                        throw "ERROR: Spooler did not start within 3 minutes!"
-                    }
-
-                    Write-Host "SUCCESS: Spooler is running!"
-                    Write-Host "SERVICE CHECK PASSED"
-                '''
-            }
-        }
+    options {
+        timeout(time: 10, unit: 'MINUTES')
     }
+
+    steps {
+        powershell '''
+            $ErrorActionPreference = "Stop"
+
+            Write-Host "Agent reconnected."
+
+            $beforeFile = "$env:WORKSPACE\\boot-before.txt"
+
+            if (-not (Test-Path $beforeFile)) {
+                throw "Previous boot time file not found!"
+            }
+
+            $previousBoot = [DateTime]::Parse(
+                (Get-Content $beforeFile -Raw).Trim()
+            )
+
+            $currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+
+            Write-Host "Previous boot: $previousBoot"
+            Write-Host "Current boot: $currentBoot"
+
+            if ($currentBoot -le $previousBoot) {
+                throw "VM reboot was not detected!"
+            }
+
+            Write-Host "SUCCESS: VM reboot confirmed."
+
+            $deadline = (Get-Date).AddMinutes(3)
+            $isRunning = $false
+
+            while ((Get-Date) -lt $deadline) {
+                $service = Get-Service -Name "Spooler"
+
+                Write-Host "Spooler status: $($service.Status)"
+
+                if ($service.Status -eq "Running") {
+                    $isRunning = $true
+                    break
+                }
+
+                Start-Sleep -Seconds 5
+            }
+
+            if (-not $isRunning) {
+                throw "Spooler did not start automatically!"
+            }
+
+            Write-Host "SUCCESS: Spooler is running!"
+            Write-Host "SERVICE CHECK PASSED"
+        '''
+    }
+}
 
     post {
         success {
