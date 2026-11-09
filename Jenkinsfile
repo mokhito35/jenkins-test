@@ -1,30 +1,39 @@
+
 pipeline {
-     agent none
+    agent none
 
     options {
         skipDefaultCheckout()
     }
+
     stages {
+
         stage('Check Admin Rights') {
-    agent { label 'Second' }
-    steps {
-        powershell '''
-            Write-Host "Current user:"
-            whoami
+            agent { label 'Second' }
+            steps {
+                powershell '''
+                    Write-Host "Current user:"
+                    whoami
 
-            Write-Host "Administrator status:"
-            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-            $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+                    Write-Host "Administrator status:"
+                    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+                    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 
-            Write-Host $principal.IsInRole(
-                [Security.Principal.WindowsBuiltInRole]::Administrator
-            )
+                    $isAdmin = $principal.IsInRole(
+                        [Security.Principal.WindowsBuiltInRole]::Administrator
+                    )
 
-            Write-Host "User groups:"
-            whoami /groups
-        '''
-    }
-}
+                    Write-Host $isAdmin
+                    Write-Host "User groups:"
+                    whoami /groups
+
+                    if (-not $isAdmin) {
+                        throw "Agent does not have Administrator privileges!"
+                    }
+                '''
+            }
+        }
+
         stage('Hello') {
             agent { label 'Second' }
             steps {
@@ -47,14 +56,17 @@ pipeline {
                 echo 'Build completed successfully!'
             }
         }
+
         stage('Check Git') {
             agent { label 'Second' }
-    steps {
-        bat 'git status'
-        bat 'git branch'
-    }
-        } 
-         stage('Check VM') {
+            steps {
+                checkout scm
+                bat 'git status'
+                bat 'git branch'
+            }
+        }
+
+        stage('Check VM') {
             agent { label 'Second' }
             steps {
                 echo 'Checking target VM...'
@@ -64,10 +76,7 @@ pipeline {
         }
 
         stage('Check Service') {
-            agent {
-                label 'Second'
-            }
-
+            agent { label 'Second' }
             steps {
                 powershell '''
                     $ErrorActionPreference = "Stop"
@@ -81,15 +90,10 @@ pipeline {
             }
         }
 
-
-        // 2. Останавливаем службу
         stage('Stop Service') {
-            agent {
-                label 'Second'
-            }
-
+            agent { label 'Second' }
             steps {
-                powershell ''' 
+                powershell '''
                     $ErrorActionPreference = "Stop"
 
                     Set-Service -Name "Spooler" -StartupType Automatic
@@ -112,17 +116,12 @@ pipeline {
                     }
 
                     Write-Host "SUCCESS: Spooler is stopped."
-                ''' 
+                '''
             }
         }
 
-
-        // 3. Очищаем кэш службы печати
         stage('Clean Cache') {
-            agent {
-                label 'Second'
-            }
-
+            agent { label 'Second' }
             steps {
                 powershell '''
                     $ErrorActionPreference = "Stop"
@@ -151,60 +150,65 @@ pipeline {
             }
         }
 
-
-        // 4. Перезагружаем виртуальную машину
         stage('Restart VM') {
-    agent { label 'Second' }
-    steps {
-        powershell '''
-            Write-Host "Restarting Windows VM..."
+            agent { label 'Second' }
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
 
-            Start-Process `
-                -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
-                -ArgumentList "/r /t 5 /f" `
-                -WindowStyle Hidden
+                    Write-Host "Restarting Windows VM..."
 
-            Write-Host "Restart command sent successfully."
-            Start-Sleep -Seconds 2
-        ''' 
+                    Start-Process `
+                        -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
+                        -ArgumentList "/r /t 5 /f" `
+                        -WindowStyle Hidden
+
+                    Write-Host "Restart command sent successfully."
+
+                    Start-Sleep -Seconds 2
+                '''
+            }
+        }
+
+        stage('Verify Service') {
+            agent { label 'Second' }
+
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    Write-Host "Waiting for Spooler to start..."
+
+                    $timeout = (Get-Date).AddMinutes(3)
+                    $service = Get-Service -Name "Spooler"
+
+                    do {
+                        $service = Get-Service -Name "Spooler"
+
+                        Write-Host "Current status: $($service.Status)"
+
+                        if ($service.Status -eq "Running") {
+                            Write-Host "SUCCESS: Spooler is running!"
+                            break
+                        }
+
+                        Start-Sleep -Seconds 5
+
+                    } while ((Get-Date) -lt $timeout)
+
+                    if ($service.Status -ne "Running") {
+                        throw "ERROR: Spooler did not start within 3 minutes!"
+                    }
+
+                    Write-Host "SERVICE CHECK PASSED"
+                '''
+            }
+        }
     }
-}
-
-
-        // 5. Ждём возвращения агента и проверяем службу
-       stage('Verify Service') {
-    agent { label 'Second' }
-    options {
-        timeout(time: 5, unit: 'MINUTES')
-    }
-    steps {
-        powershell '''
-            $ErrorActionPreference = "Stop"
-
-Write-Host "Waiting for Spooler to start..."
-
-$timeout = (Get-Date).AddMinutes(3)
-
-do {
-    $service = Get-Service -Name "Spooler"
-
-    if ($service.Status -eq "Running") {
-        Write-Host "SUCCESS: Spooler is running!"
-        break
-    }
-
-    Start-Sleep -Seconds 5
-} while ((Get-Date) -lt $timeout)
-
-if ($service.Status -ne "Running") {
-    throw "ERROR: Spooler did not start within 3 minutes!"
-}
-        
-    }
-}
-'''
-    }
-   
 
     post {
         success {
