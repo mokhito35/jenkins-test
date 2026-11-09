@@ -7,6 +7,7 @@ pipeline {
     }
     triggers {
         cron('0 7 * * *')
+    }
 
     stages {
         stage('Check Admin Rights') {
