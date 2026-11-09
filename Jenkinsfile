@@ -69,7 +69,7 @@ pipeline {
             }
 
             steps {
-                powershell '''
+                powershell 
                     $ErrorActionPreference = "Stop"
 
                     $service = Get-Service -Name "Spooler" -ErrorAction Stop
@@ -77,7 +77,7 @@ pipeline {
                     Write-Host "Service found: $($service.DisplayName)"
                     Write-Host "Service Name: $($service.Name)"
                     Write-Host "Current Status: $($service.Status)"
-                '''
+                
             }
         }
 
@@ -88,7 +88,7 @@ pipeline {
             }
 
             steps {
-                powershell '''
+                powershell 
                     $ErrorActionPreference = "Stop"
 
                     Set-Service -Name "Spooler" -StartupType Automatic
@@ -111,7 +111,7 @@ pipeline {
                     }
 
                     Write-Host "SUCCESS: Spooler is stopped."
-                '''
+                
             }
         }
 
@@ -122,7 +122,7 @@ pipeline {
             }
 
             steps {
-                powershell '''
+                powershell 
                     $ErrorActionPreference = "Stop"
 
                     $service = Get-Service -Name "Spooler"
@@ -145,7 +145,7 @@ pipeline {
 
                     Write-Host "SUCCESS: Spooler cache cleaned."
                     Write-Host "Deleted files: $($files.Count)"
-                '''
+                
             }
         }
 
@@ -153,7 +153,7 @@ pipeline {
         stage('Restart VM') {
     agent { label 'Second' }
     steps {
-        powershell '''
+        powershell
             Write-Host "Restarting Windows VM..."
 
             Start-Process `
@@ -162,8 +162,8 @@ pipeline {
                 -WindowStyle Hidden
 
             Write-Host "Restart command sent successfully."
-            Start-Sleep -Seconds 7
-        '''
+            Start-Sleep -Seconds 2
+        
     }
 }
 
@@ -174,37 +174,28 @@ pipeline {
         timeout(time: 5, unit: 'MINUTES')
     }
     steps {
-        powershell '''
+        powershell 
             $ErrorActionPreference = "Stop"
 
-            Write-Host "Waiting for Windows services to initialize..."
+Write-Host "Waiting for Spooler to start..."
 
-            $service = Get-Service -Name "Spooler" -ErrorAction Stop
+$timeout = (Get-Date).AddMinutes(3)
 
-            # Убеждаемся, что автоматический запуск настроен
-            Set-Service -Name "Spooler" -StartupType Automatic
+do {
+    $service = Get-Service -Name "Spooler"
 
-            # Ждём запуска службы
-            $deadline = (Get-Date).AddMinutes(3)
+    if ($service.Status -eq "Running") {
+        Write-Host "SUCCESS: Spooler is running!"
+        break
+    }
 
-            while ((Get-Service -Name "Spooler").Status -ne "Running") {
-                if ((Get-Date) -ge $deadline) {
-                    throw "ERROR: Spooler did not start within 3 minutes!"
-                }
+    Start-Sleep -Seconds 5
+} while ((Get-Date) -lt $timeout)
 
-                Write-Host "Spooler is still stopped. Waiting 10 seconds..."
-                Start-Sleep -Seconds 10
-
-                # Если Windows не запустила службу сама, запускаем её
-                $service = Get-Service -Name "Spooler"
-                if ($service.Status -ne "Running") {
-                    Start-Service -Name "Spooler"
-                }
-            }
-
-            Write-Host "SUCCESS: Spooler is running!"
-            Write-Host "SERVICE CHECK PASSED"
-        '''
+if ($service.Status -ne "Running") {
+    throw "ERROR: Spooler did not start within 3 minutes!"
+}
+        
     }
 }
     }
