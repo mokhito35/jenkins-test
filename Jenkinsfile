@@ -217,8 +217,9 @@ pipeline {
             Write-Host "SUCCESS: Spooler is running!"
             Write-Host "SERVICE CHECK PASSED"
         '''
+            }
+        }
     }
-}
 
     post {
         success {
