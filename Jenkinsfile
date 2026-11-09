@@ -172,33 +172,45 @@ pipeline {
         }
 
         // 5. Ждём возвращения агента и проверяем службу
-        stage('Verify Service') {
-            agent {
-                label 'Second'
+       stage('Verify Service') {
+    agent { label 'Second' }
+    options {
+        timeout(time: 5, unit: 'MINUTES')
+    }
+    steps {
+        powershell '''
+            $ErrorActionPreference = "Stop"
+
+            Write-Host "Waiting for Windows services to initialize..."
+
+            $service = Get-Service -Name "Spooler" -ErrorAction Stop
+
+            # Убеждаемся, что автоматический запуск настроен
+            Set-Service -Name "Spooler" -StartupType Automatic
+
+            # Ждём запуска службы
+            $deadline = (Get-Date).AddMinutes(3)
+
+            while ((Get-Service -Name "Spooler").Status -ne "Running") {
+                if ((Get-Date) -ge $deadline) {
+                    throw "ERROR: Spooler did not start within 3 minutes!"
+                }
+
+                Write-Host "Spooler is still stopped. Waiting 10 seconds..."
+                Start-Sleep -Seconds 10
+
+                # Если Windows не запустила службу сама, запускаем её
+                $service = Get-Service -Name "Spooler"
+                if ($service.Status -ne "Running") {
+                    Start-Service -Name "Spooler"
+                }
             }
 
-            options {
-                timeout(time: 15, unit: 'MINUTES')
-            }
-
-            steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
-
-                    $service = Get-Service -Name "Spooler" -ErrorAction Stop
-
-                    Write-Host "Checking service after reboot..."
-                    Write-Host "Current status: $($service.Status)"
-
-                    if ($service.Status -ne "Running") {
-                        throw "ERROR: Spooler is not running after reboot!"
-                    }
-
-                    Write-Host "SUCCESS: Spooler is running!"
-                    Write-Host "SERVICE CHECK PASSED"
-                '''
-            }
-        }
+            Write-Host "SUCCESS: Spooler is running!"
+            Write-Host "SERVICE CHECK PASSED"
+        '''
+    }
+}
     }
 
     post {
