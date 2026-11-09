@@ -151,25 +151,21 @@ pipeline {
 
         // 4. Перезагружаем виртуальную машину
         stage('Restart VM') {
-            agent {
-                label 'Second'
-            }
+    agent { label 'Second' }
+    steps {
+        powershell '''
+            Write-Host "Restarting Windows VM..."
 
-            steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
+            Start-Process `
+                -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
+                -ArgumentList "/r /t 5 /f" `
+                -WindowStyle Hidden
 
-                    Write-Host "Restarting Windows VM..."
-
-                    Start-Process `
-                        -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
-                        -ArgumentList "/r /t 30 /f" `
-                        -WindowStyle Hidden
-
-                    Write-Host "Restart command sent successfully."
-                '''
-            }
-        }
+            Write-Host "Restart command sent successfully."
+            Start-Sleep -Seconds 7
+        '''
+    }
+}
 
         // 5. Ждём возвращения агента и проверяем службу
        stage('Verify Service') {
