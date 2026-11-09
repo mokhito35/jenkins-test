@@ -160,6 +160,15 @@ pipeline {
     }
 }
 
+stage('Wait for VM Shutdown') {
+    agent none
+
+    steps {
+        echo 'Waiting for Windows VM to shut down...'
+        sleep time: 30, unit: 'SECONDS'
+        echo 'Waiting period completed.'
+    }
+}
         stage('Verify Service') {
     agent { label 'Second' }
 
@@ -188,9 +197,9 @@ pipeline {
             Write-Host "Previous boot: $previousBoot"
             Write-Host "Current boot: $currentBoot"
 
-            if ($currentBoot -le $previousBoot) {
-                throw "VM reboot was not detected!"
-            }
+            if ($currentBoot -le $previousBoot.AddSeconds(30)) {
+    throw "VM reboot was not detected or boot time did not change enough!"
+}
 
             Write-Host "SUCCESS: VM reboot confirmed."
 
