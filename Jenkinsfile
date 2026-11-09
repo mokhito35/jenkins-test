@@ -1,16 +1,19 @@
 pipeline {
-    agent {
-        label 'Second'
-    }
+     agent none
 
+    options {
+        skipDefaultCheckout()
+    }
     stages {
         stage('Hello') {
+            agent { label 'Second' }
             steps {
                 echo 'Hello from Jenkins!'
             }
         }
 
         stage('Check Environment') {
+            agent { label 'Second' }
             steps {
                 bat 'whoami'
                 bat 'java -version'
@@ -19,17 +22,20 @@ pipeline {
         }
 
         stage('Build') {
+            agent { label 'Second' }
             steps {
                 echo 'Build completed successfully!'
             }
         }
         stage('Check Git') {
+            agent { label 'Second' }
     steps {
         bat 'git status'
         bat 'git branch'
     }
         } 
          stage('Check VM') {
+            agent { label 'Second' }
             steps {
                 echo 'Checking target VM...'
                 bat 'hostname'
