@@ -1,4 +1,3 @@
-
 pipeline {
     agent none
 
@@ -141,27 +140,28 @@ pipeline {
         }
 
         stage('Restart VM') {
-    agent { label 'Second' }
+            agent { label 'Second' }
+            steps {
+                withEnv(["BOOT_FILE=${env.WORKSPACE}\\boot-before.txt"]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
 
-    steps {
-        powershell '''
-            $ErrorActionPreference = "Stop"
+                        $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+                        $bootTime | Set-Content -Path $env:BOOT_FILE
 
-            $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
-            $bootTime | Set-Content "$env:WORKSPACE\\boot-before.txt"
+                        Write-Host "Previous boot time: $bootTime"
+                        Write-Host "Restarting Windows VM..."
 
-            Write-Host "Previous boot time: $bootTime"
-            Write-Host "Restarting Windows VM..."
+                        Start-Process `
+                            -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
+                            -ArgumentList "/r /t 5 /f" `
+                            -WindowStyle Hidden
 
-            Start-Process `
-                -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
-                -ArgumentList "/r /t 5 /f" `
-                -WindowStyle Hidden
-
-            Write-Host "Restart command sent."
-        '''
-    }
-}
+                        Write-Host "Restart command sent."
+                    '''
+                }
+            }
+        }
 
 stage('Wait for VM Shutdown') {
     agent none
@@ -173,69 +173,63 @@ stage('Wait for VM Shutdown') {
     }
 }
         stage('Verify Service') {
-    agent { label 'Second' }
-
-    options {
-        timeout(time: 10, unit: 'MINUTES')
-    }
-
-    steps {
-        powershell '''
-            $ErrorActionPreference = "Stop"
-
-            Write-Host "Agent reconnected."
-
-            $beforeFile = "$env:WORKSPACE\\boot-before.txt"
-
-            if (-not (Test-Path $beforeFile)) {
-                throw "Previous boot time file not found!"
+            agent { label 'Second' }
+            options {
+                timeout(time: 10, unit: 'MINUTES')
             }
+            steps {
+                withEnv(["BOOT_FILE=${env.WORKSPACE}\\boot-before.txt"]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
 
-            $previousBoot = [DateTime]::Parse(
-                (Get-Content $beforeFile -Raw).Trim()
-            )
+                        Write-Host "Agent reconnected."
 
-            $currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+                        $beforeFile = $env:BOOT_FILE
 
-            Write-Host "Previous boot: $previousBoot"
-            Write-Host "Current boot: $currentBoot"
+                        if (-not (Test-Path $beforeFile)) {
+                            throw "Previous boot time file not found: $beforeFile"
+                        }
 
-            if ($currentBoot -le $previousBoot.AddSeconds(30)) {
-    throw "VM reboot was not detected or boot time did not change enough!"
-}
+                        $previousBoot = [DateTime]::Parse(
+                            (Get-Content $beforeFile -Raw).Trim()
+                        )
 
-            Write-Host "SUCCESS: VM reboot confirmed."
+                        $currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
 
-            $deadline = (Get-Date).AddMinutes(3)
-            $isRunning = $false
+                        Write-Host "Previous boot: $previousBoot"
+                        Write-Host "Current boot: $currentBoot"
 
-            while ((Get-Date) -lt $deadline) {
-                $service = Get-Service -Name "Spooler"
+                        if ($currentBoot -le $previousBoot.AddSeconds(30)) {
+                            throw "VM reboot was not detected or boot time did not change enough!"
+                        }
 
-                Write-Host "Spooler status: $($service.Status)"
+                        Write-Host "SUCCESS: VM reboot confirmed."
 
-                if ($service.Status -eq "Running") {
-                    $isRunning = $true
-                    break
+                        $deadline = (Get-Date).AddMinutes(3)
+                        $isRunning = $false
+
+                        while ((Get-Date) -lt $deadline) {
+                            $service = Get-Service -Name "Spooler"
+                            Write-Host "Spooler status: $($service.Status)"
+
+                            if ($service.Status -eq "Running") {
+                                $isRunning = $true
+                                break
+                            }
+
+                            Start-Sleep -Seconds 5
+                        }
+
+                        if (-not $isRunning) {
+                            throw "Spooler did not start automatically!"
+                        }
+
+                        Write-Host "SUCCESS: Spooler is running!"
+                        Write-Host "SERVICE CHECK PASSED"
+                    '''
                 }
-
-                Start-Sleep -Seconds 5
-            }
-
-            if (-not $isRunning) {
-                throw "Spooler did not start automatically!"
-            }
-
-            Write-Host "SUCCESS: Spooler is running!"
-            Write-Host "SERVICE CHECK PASSED"
-        '''
             }
         }
-
-       
-
-        // ===== SECOND VM COMPLETED =====
-        // ===== START THIRD VM =====
 
         stage('Third - Check Admin Rights') {
             agent { label 'third' }
@@ -370,25 +364,23 @@ stage('Wait for VM Shutdown') {
         stage('Third - Restart VM') {
             agent { label 'third' }
             steps {
-                script {
-                    def workspacePath = env.WORKSPACE
+                withEnv(["BOOT_FILE=${env.WORKSPACE}\\boot-before.txt"]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
 
-                    powershell """
-                        `$ErrorActionPreference = "Stop"
+                        $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+                        $bootTime | Set-Content -Path $env:BOOT_FILE
 
-                        `$bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
-                        `$bootTime | Set-Content -Path "${workspacePath}\\boot-before.txt"
-
-                        Write-Host "Previous boot time: `$bootTime"
+                        Write-Host "Previous boot time: $bootTime"
                         Write-Host "Restarting third VM..."
 
                         Start-Process `
-                            -FilePath "`$env:SystemRoot\\System32\\shutdown.exe" `
+                            -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
                             -ArgumentList "/r /t 5 /f" `
                             -WindowStyle Hidden
 
                         Write-Host "Restart command sent."
-                    """
+                    '''
                 }
             }
         }
@@ -404,68 +396,62 @@ stage('Wait for VM Shutdown') {
 
         stage('Third - Verify Service') {
             agent { label 'third' }
-
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
-
             steps {
-                script {
-                    def workspacePath = env.WORKSPACE
-
-                    powershell """
-                        `$ErrorActionPreference = "Stop"
+                withEnv(["BOOT_FILE=${env.WORKSPACE}\\boot-before.txt"]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
 
                         Write-Host "Third agent reconnected."
 
-                        `$beforeFile = "${workspacePath}\\boot-before.txt"
+                        $beforeFile = $env:BOOT_FILE
 
-                        if (-not (Test-Path `$beforeFile)) {
-                            throw "Previous boot time file not found: `$beforeFile"
+                        if (-not (Test-Path $beforeFile)) {
+                            throw "Previous boot time file not found: $beforeFile"
                         }
 
-                        `$previousBoot = [DateTime]::Parse(
-                            (Get-Content `$beforeFile -Raw).Trim()
+                        $previousBoot = [DateTime]::Parse(
+                            (Get-Content $beforeFile -Raw).Trim()
                         )
 
-                        `$currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+                        $currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
 
-                        Write-Host "Previous boot: `$previousBoot"
-                        Write-Host "Current boot: `$currentBoot"
+                        Write-Host "Previous boot: $previousBoot"
+                        Write-Host "Current boot: $currentBoot"
 
-                        if (`$currentBoot -le `$previousBoot.AddSeconds(30)) {
+                        if ($currentBoot -le $previousBoot.AddSeconds(30)) {
                             throw "Third VM reboot was not detected!"
                         }
 
                         Write-Host "SUCCESS: Third VM reboot confirmed."
 
-                        `$deadline = (Get-Date).AddMinutes(3)
-                        `$isRunning = `$false
+                        $deadline = (Get-Date).AddMinutes(3)
+                        $isRunning = $false
 
-                        while ((Get-Date) -lt `$deadline) {
-                            `$service = Get-Service -Name "Spooler"
+                        while ((Get-Date) -lt $deadline) {
+                            $service = Get-Service -Name "Spooler"
+                            Write-Host "Spooler status: $($service.Status)"
 
-                            Write-Host "Spooler status: `$(`$service.Status)"
-
-                            if (`$service.Status -eq "Running") {
-                                `$isRunning = `$true
+                            if ($service.Status -eq "Running") {
+                                $isRunning = $true
                                 break
                             }
 
                             Start-Sleep -Seconds 5
                         }
 
-                        if (-not `$isRunning) {
+                        if (-not $isRunning) {
                             throw "Spooler did not start automatically on third!"
                         }
 
                         Write-Host "SUCCESS: Spooler is running on third!"
                         Write-Host "THIRD SERVICE CHECK PASSED"
-                    """
+                    '''
                 }
             }
         }
-
 
     post {
         success {
