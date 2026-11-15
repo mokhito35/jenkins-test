@@ -379,7 +379,7 @@ stage('Wait for VM Shutdown') {
                     Write-Host "Restarting third VM..."
 
                     Start-Process `
-                        -FilePath "$env:SystemRoot\System32\shutdown.exe" `
+                        -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
                         -ArgumentList "/r /t 5 /f" `
                         -WindowStyle Hidden
 
