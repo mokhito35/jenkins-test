@@ -453,6 +453,8 @@ stage('Wait for VM Shutdown') {
             }
         }
 
+    }
+
     post {
         success {
             echo 'SUCCESS: All operations completed successfully!'
