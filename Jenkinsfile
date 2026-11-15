@@ -233,16 +233,14 @@ stage('Wait for VM Shutdown') {
         }
 
        
+
         // ===== SECOND VM COMPLETED =====
         // ===== START THIRD VM =====
 
         stage('Third - Check Admin Rights') {
             agent { label 'third' }
             steps {
-                script {
-                    def workspacePath = env.WORKSPACE
-                
-                powershell """
+                powershell '''
                     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
                     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
                     $isAdmin = $principal.IsInRole(
@@ -256,8 +254,7 @@ stage('Wait for VM Shutdown') {
                     if (-not $isAdmin) {
                         throw "Agent third does not have Administrator privileges!"
                     }
-                """
-                }
+                '''
             }
         }
 
@@ -373,22 +370,26 @@ stage('Wait for VM Shutdown') {
         stage('Third - Restart VM') {
             agent { label 'third' }
             steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
+                script {
+                    def workspacePath = env.WORKSPACE
 
-                    $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
-                    $bootTime | Set-Content "$env:WORKSPACE\\boot-before.txt"
+                    powershell """
+                        `$ErrorActionPreference = "Stop"
 
-                    Write-Host "Previous boot time: $bootTime"
-                    Write-Host "Restarting third VM..."
+                        `$bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+                        `$bootTime | Set-Content -Path "${workspacePath}\\boot-before.txt"
 
-                    Start-Process `
-                        -FilePath "$env:SystemRoot\\System32\\shutdown.exe" `
-                        -ArgumentList "/r /t 5 /f" `
-                        -WindowStyle Hidden
+                        Write-Host "Previous boot time: `$bootTime"
+                        Write-Host "Restarting third VM..."
 
-                    Write-Host "Restart command sent."
-                '''
+                        Start-Process `
+                            -FilePath "`$env:SystemRoot\\System32\\shutdown.exe" `
+                            -ArgumentList "/r /t 5 /f" `
+                            -WindowStyle Hidden
+
+                        Write-Host "Restart command sent."
+                    """
+                }
             }
         }
 
@@ -409,59 +410,62 @@ stage('Wait for VM Shutdown') {
             }
 
             steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
+                script {
+                    def workspacePath = env.WORKSPACE
 
-                    Write-Host "Third agent reconnected."
+                    powershell """
+                        `$ErrorActionPreference = "Stop"
 
-                    $beforeFile = "$env:WORKSPACE\\boot-before.txt"
+                        Write-Host "Third agent reconnected."
 
-                    if (-not (Test-Path $beforeFile)) {
-                        throw "Previous boot time file not found!"
-                    }
+                        `$beforeFile = "${workspacePath}\\boot-before.txt"
 
-                    $previousBoot = [DateTime]::Parse(
-                        (Get-Content $beforeFile -Raw).Trim()
-                    )
-
-                    $currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
-
-                    Write-Host "Previous boot: $previousBoot"
-                    Write-Host "Current boot: $currentBoot"
-
-                    if ($currentBoot -le $previousBoot.AddSeconds(30)) {
-                        throw "Third VM reboot was not detected!"
-                    }
-
-                    Write-Host "SUCCESS: Third VM reboot confirmed."
-
-                    $deadline = (Get-Date).AddMinutes(3)
-                    $isRunning = $false
-
-                    while ((Get-Date) -lt $deadline) {
-                        $service = Get-Service -Name "Spooler"
-
-                        Write-Host "Spooler status: $($service.Status)"
-
-                        if ($service.Status -eq "Running") {
-                            $isRunning = $true
-                            break
+                        if (-not (Test-Path `$beforeFile)) {
+                            throw "Previous boot time file not found: `$beforeFile"
                         }
 
-                        Start-Sleep -Seconds 5
-                    }
+                        `$previousBoot = [DateTime]::Parse(
+                            (Get-Content `$beforeFile -Raw).Trim()
+                        )
 
-                    if (-not $isRunning) {
-                        throw "Spooler did not start automatically on third!"
-                    }
+                        `$currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
 
-                    Write-Host "SUCCESS: Spooler is running on third!"
-                    Write-Host "THIRD SERVICE CHECK PASSED"
-                '''
+                        Write-Host "Previous boot: `$previousBoot"
+                        Write-Host "Current boot: `$currentBoot"
+
+                        if (`$currentBoot -le `$previousBoot.AddSeconds(30)) {
+                            throw "Third VM reboot was not detected!"
+                        }
+
+                        Write-Host "SUCCESS: Third VM reboot confirmed."
+
+                        `$deadline = (Get-Date).AddMinutes(3)
+                        `$isRunning = `$false
+
+                        while ((Get-Date) -lt `$deadline) {
+                            `$service = Get-Service -Name "Spooler"
+
+                            Write-Host "Spooler status: `$(`$service.Status)"
+
+                            if (`$service.Status -eq "Running") {
+                                `$isRunning = `$true
+                                break
+                            }
+
+                            Start-Sleep -Seconds 5
+                        }
+
+                        if (-not `$isRunning) {
+                            throw "Spooler did not start automatically on third!"
+                        }
+
+                        Write-Host "SUCCESS: Spooler is running on third!"
+                        Write-Host "THIRD SERVICE CHECK PASSED"
+                    """
+                }
             }
         }
- 
-    }
+
 
     post {
         success {
