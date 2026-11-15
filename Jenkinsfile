@@ -239,7 +239,10 @@ stage('Wait for VM Shutdown') {
         stage('Third - Check Admin Rights') {
             agent { label 'third' }
             steps {
-                powershell '''
+                script {
+                    def workspacePath = env.WORKSPACE
+                
+                powershell """
                     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
                     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
                     $isAdmin = $principal.IsInRole(
@@ -253,7 +256,8 @@ stage('Wait for VM Shutdown') {
                     if (-not $isAdmin) {
                         throw "Agent third does not have Administrator privileges!"
                     }
-                '''
+                """
+                }
             }
         }
 
