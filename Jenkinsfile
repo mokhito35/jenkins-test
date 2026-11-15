@@ -231,6 +231,232 @@ stage('Wait for VM Shutdown') {
         '''
             }
         }
+
+       
+        // ===== SECOND VM COMPLETED =====
+        // ===== START THIRD VM =====
+
+        stage('Third - Check Admin Rights') {
+            agent { label 'third' }
+            steps {
+                powershell '''
+                    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+                    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+                    $isAdmin = $principal.IsInRole(
+                        [Security.Principal.WindowsBuiltInRole]::Administrator
+                    )
+
+                    Write-Host "Current user:"
+                    whoami
+                    Write-Host "Administrator status: $isAdmin"
+
+                    if (-not $isAdmin) {
+                        throw "Agent third does not have Administrator privileges!"
+                    }
+                '''
+            }
+        }
+
+        stage('Third - Hello') {
+            agent { label 'third' }
+            steps {
+                echo 'Hello from Jenkins on third!'
+            }
+        }
+
+        stage('Third - Check Environment') {
+            agent { label 'third' }
+            steps {
+                bat 'whoami'
+                bat 'java -version'
+                bat 'git --version'
+            }
+        }
+
+        stage('Third - Build') {
+            agent { label 'third' }
+            steps {
+                echo 'Build completed successfully on third!'
+            }
+        }
+
+        stage('Third - Check Git') {
+            agent { label 'third' }
+            steps {
+                checkout scm
+                bat 'git status'
+                bat 'git branch'
+            }
+        }
+
+        stage('Third - Check VM') {
+            agent { label 'third' }
+            steps {
+                bat 'hostname'
+                bat 'whoami'
+            }
+        }
+
+        stage('Third - Check Service') {
+            agent { label 'third' }
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+                    $service = Get-Service -Name "Spooler" -ErrorAction Stop
+                    Write-Host "Service found: $($service.DisplayName)"
+                    Write-Host "Current Status: $($service.Status)"
+                '''
+            }
+        }
+
+        stage('Third - Stop Service') {
+            agent { label 'third' }
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    Set-Service -Name "Spooler" -StartupType Automatic
+                    $service = Get-Service -Name "Spooler"
+
+                    if ($service.Status -ne "Stopped") {
+                        Stop-Service -Name "Spooler" -Force
+                        $service.WaitForStatus(
+                            [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+                            [TimeSpan]::FromSeconds(30)
+                        )
+                    }
+
+                    $service = Get-Service -Name "Spooler"
+
+                    if ($service.Status -ne "Stopped") {
+                        throw "Service failed to stop!"
+                    }
+
+                    Write-Host "SUCCESS: Spooler is stopped on third."
+                '''
+            }
+        }
+
+        stage('Third - Clean Cache') {
+            agent { label 'third' }
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    $service = Get-Service -Name "Spooler"
+                    if ($service.Status -ne "Stopped") {
+                        throw "Spooler must be stopped before cache cleanup!"
+                    }
+
+                    $cachePath = "$env:SystemRoot\System32\spool\PRINTERS"
+
+                    if (-not (Test-Path $cachePath)) {
+                        throw "Spooler cache directory not found!"
+                    }
+
+                    $files = @(Get-ChildItem -Path $cachePath -Force -File)
+
+                    if ($files.Count -gt 0) {
+                        $files | Remove-Item -Force
+                    }
+
+                    Write-Host "SUCCESS: Spooler cache cleaned on third."
+                    Write-Host "Deleted files: $($files.Count)"
+                '''
+            }
+        }
+
+        stage('Third - Restart VM') {
+            agent { label 'third' }
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+                    $bootTime | Set-Content "$env:WORKSPACE\boot-before.txt"
+
+                    Write-Host "Previous boot time: $bootTime"
+                    Write-Host "Restarting third VM..."
+
+                    Start-Process `
+                        -FilePath "$env:SystemRoot\System32\shutdown.exe" `
+                        -ArgumentList "/r /t 5 /f" `
+                        -WindowStyle Hidden
+
+                    Write-Host "Restart command sent."
+                '''
+            }
+        }
+
+        stage('Third - Wait for VM Shutdown') {
+            agent none
+            steps {
+                echo 'Waiting for third Windows VM to restart...'
+                sleep time: 30, unit: 'SECONDS'
+                echo 'Waiting period completed.'
+            }
+        }
+
+        stage('Third - Verify Service') {
+            agent { label 'third' }
+
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    Write-Host "Third agent reconnected."
+
+                    $beforeFile = "$env:WORKSPACE\boot-before.txt"
+
+                    if (-not (Test-Path $beforeFile)) {
+                        throw "Previous boot time file not found!"
+                    }
+
+                    $previousBoot = [DateTime]::Parse(
+                        (Get-Content $beforeFile -Raw).Trim()
+                    )
+
+                    $currentBoot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+
+                    Write-Host "Previous boot: $previousBoot"
+                    Write-Host "Current boot: $currentBoot"
+
+                    if ($currentBoot -le $previousBoot.AddSeconds(30)) {
+                        throw "Third VM reboot was not detected!"
+                    }
+
+                    Write-Host "SUCCESS: Third VM reboot confirmed."
+
+                    $deadline = (Get-Date).AddMinutes(3)
+                    $isRunning = $false
+
+                    while ((Get-Date) -lt $deadline) {
+                        $service = Get-Service -Name "Spooler"
+
+                        Write-Host "Spooler status: $($service.Status)"
+
+                        if ($service.Status -eq "Running") {
+                            $isRunning = $true
+                            break
+                        }
+
+                        Start-Sleep -Seconds 5
+                    }
+
+                    if (-not $isRunning) {
+                        throw "Spooler did not start automatically on third!"
+                    }
+
+                    Write-Host "SUCCESS: Spooler is running on third!"
+                    Write-Host "THIRD SERVICE CHECK PASSED"
+                '''
+            }
+        }
+ 
     }
 
     post {
