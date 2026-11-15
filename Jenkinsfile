@@ -348,7 +348,7 @@ stage('Wait for VM Shutdown') {
                         throw "Spooler must be stopped before cache cleanup!"
                     }
 
-                    $cachePath = "$env:SystemRoot\System32\spool\PRINTERS"
+                    $cachePath = "$env:SystemRoot\\System32\\spool\\PRINTERS"
 
                     if (-not (Test-Path $cachePath)) {
                         throw "Spooler cache directory not found!"
@@ -373,7 +373,7 @@ stage('Wait for VM Shutdown') {
                     $ErrorActionPreference = "Stop"
 
                     $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
-                    $bootTime | Set-Content "$env:WORKSPACE\boot-before.txt"
+                    $bootTime | Set-Content "$env:WORKSPACE\\boot-before.txt"
 
                     Write-Host "Previous boot time: $bootTime"
                     Write-Host "Restarting third VM..."
@@ -410,7 +410,7 @@ stage('Wait for VM Shutdown') {
 
                     Write-Host "Third agent reconnected."
 
-                    $beforeFile = "$env:WORKSPACE\boot-before.txt"
+                    $beforeFile = "$env:WORKSPACE\\boot-before.txt"
 
                     if (-not (Test-Path $beforeFile)) {
                         throw "Previous boot time file not found!"
